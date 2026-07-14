@@ -3,175 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mon Scanner Santé Indépendant</title>
-    <!-- Tailwind pour le style -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Tesseract.js pour lire le texte sur la photo sans serveur -->
-    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
+    <title>Mon Détecteur de Polémiques d'Arbitrage</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background-color: #0f172a; color: #f8fafc; }
+        .container { background-color: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
+        h1 { color: #38bdf8; text-align: center; margin-bottom: 5px; }
+        p.subtitle { text-align: center; color: #94a3b8; margin-bottom: 25px; }
+        input[type="text"] { width: 100%; padding: 14px; background-color: #0f172a; border: 2px solid #334155; border-radius: 8px; color: #fff; font-size: 16px; box-sizing: border-box; margin-bottom: 15px; }
+        input[type="text"]:focus { border-color: #38bdf8; outline: none; }
+        button { background-color: #38bdf8; color: #0f172a; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; transition: all 0.2s; }
+        button:hover { background-color: #0ea5e9; transform: translateY(-1px); }
+        .results-section { margin-top: 30px; }
+        .link-card { background-color: #334155; padding: 15px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #f43f5e; transition: transform 0.2s; }
+        .link-card:hover { transform: translateX(5px); }
+        .link-card a { color: #38bdf8; font-weight: bold; text-decoration: none; font-size: 18px; }
+        .link-card p { margin: 5px 0 0 0; font-size: 14px; color: #cbd5e1; }
+        .loading { text-align: center; color: #94a3b8; font-style: italic; }
+    </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen p-4 flex flex-col items-center font-sans">
+<body>
 
-    <h1 class="text-2xl font-bold mb-2 text-center text-green-400">Scanner Santé Local</h1>
-    <p class="text-xs text-gray-400 mb-6 text-center">Analyse 100% locale sans API externe</p>
+<div class="container">
+    <h1>🚨 Traqueur de Litiges d'Arbitrage</h1>
+    <p class="subtitle">Colle un lien Flashscore pour trouver toutes les polémiques du match sur le web</p>
 
-    <div class="w-full max-w-md bg-gray-800 p-6 rounded-2xl shadow-xl text-center border border-gray-750">
-        <!-- Input invisible pour déclencher l'appareil photo -->
-        <input type="file" id="imageInput" accept="image/*" capture="environment" class="hidden">
+    <input type="text" id="urlInput" placeholder="Colle le lien Flashscore ici... (ex: https://www.flashscore.fr/match/xxxx/)">
+    <button onclick="chercherPolemiques()">Scanner le Web</button>
+
+    <div class="results-section" id="results"></div>
+</div>
+
+<script>
+// --- CONFIGURATION GRATUITE DE TON MOTEUR DE RECHERCHE ---
+// Remplace ces valeurs par tes clés gratuites obtenues sur Google
+const GOOGLE_API_KEY = "TA_CLE_API_GOOGLE_ICI"; 
+const GOOGLE_CX = "TON_ID_DE_MOTEUR_DE_RECHERCHE_ICI"; 
+
+// Fonction pour extraire le nom des équipes à partir d'une URL Flashscore standard
+function extraireEquipesDepuisUrl(url) {
+    try {
+        // Exemple d'URL : https://www.flashscore.fr/match/tahiti-vanuatu-2026/...
+        const urlObj = new URL(url);
+        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
         
-        <button onclick="document.getElementById('imageInput').click()" class="bg-green-600 hover:bg-green-500 active:scale-95 transition w-full py-4 rounded-xl font-bold text-lg mb-4 shadow-lg shadow-green-900/30">
-            📷 Photographier les Ingrédients
-        </button>
-
-        <!-- Preview de l'image -->
-        <div class="relative hidden mb-4" id="previewContainer">
-            <img id="preview" class="w-full rounded-lg max-h-64 object-cover border border-gray-700" />
-            <div id="statusBadge" class="absolute top-2 right-2 bg-yellow-500 text-gray-900 text-xs px-2 py-1 rounded font-bold">Lecture...</div>
-        </div>
-
-        <!-- Zone de Résultats -->
-        <div id="resultBox" class="hidden text-left bg-gray-950 p-4 rounded-xl border border-gray-800">
-            <h3 class="font-bold text-lg mb-2 text-gray-200">Analyse de la recette :</h3>
-            <div id="scoreBadge" class="inline-block px-3 py-1 rounded-full text-xs font-black mb-4"></div>
-            
-            <div class="space-y-3">
-                <div>
-                    <h4 class="text-xs font-bold text-red-400 uppercase tracking-wider">⚠️ Additifs / Alertes décelés :</h4>
-                    <ul id="alertList" class="list-disc list-inside text-sm text-gray-300 mt-1"></ul>
-                </div>
-                <hr class="border-gray-800">
-                <div>
-                    <h4 class="text-xs font-bold text-green-400 uppercase tracking-wider">💡 Alternatives conseillées :</h4>
-                    <p id="alternativeText" class="text-sm text-gray-300 mt-1"></p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // --- BASE DE CONNAISSANCES LOCALE AMÉLIORÉE ---
-        // Recherche par racines de mots pour être tolérant aux erreurs de lecture OCR (ex: gélatine, sucre;, sucres)
-        const dictionnaireAlertes = [
-            { mot: "gluc", nomAffichage: "Sirop de glucose / Dextrose", risque: "Sucre ultra-transformé à très fort index glycémique." },
-            { mot: "sucr", nomAffichage: "Sucre / Sucres ajoutés", risque: "Teneur élevée en sucres ajoutés. Favorise le surpoids et les caries." },
-            { mot: "palm", nomAffichage: "Huile de palme", risque: "Riche en acides gras saturés noci-fs pour le cœur et système cardiovasculaire." },
-            { mot: "e621", nomAffichage: "Glutamate de sodium (E621)", risque: "Exhausteur de goût très controversé." },
-            { mot: "aspart", nomAffichage: "Aspartame", risque: "Édulcorant artificiel suspecté d'altérer la flore intestinale." },
-            { mot: "e250", nomAffichage: "Nitrite de sodium (E250)", risque: "Conservateur cancérogène très fréquent dans les charcuteries." },
-            { mot: "e171", nomAffichage: "Dioxyde de titane (E171)", risque: "Additif interdit en Europe, suspecté d'être génotoxique." },
-            { mot: "dextros", nomAffichage: "Dextrose", risque: "Sucre industriel rapide caché." },
-            { mot: "hydrog", nomAffichage: "Graisses hydrogénées", risque: "Contient des acides gras trans industriels toxiques pour les artères." }
-        ];
-
-        const suggestionsAlternatives = [
-            { declencheur: "sucr", conseil: "Limite fortement la portion s'il s'agit de confiseries. Préfère des collations naturellement sucrées (comme des fruits frais ou secs)." },
-            { declencheur: "gluc", conseil: "Évite les sirops de glucose qui créent des pics d'insuline agressifs. Essaie des alternatives à base de céréales complètes." },
-            { declencheur: "palm", conseil: "Privilégie les recettes utilisant des graisses plus saines (huile de colza, huile de tournesol ou pur beurre de cacao)." },
-            { declencheur: "e250", conseil: "Pour la charcuterie, cherche des gammes explicitement étiquetées 'sans nitrite ajouté'." }
-        ];
-
-        const imageInput = document.getElementById('imageInput');
-        const previewContainer = document.getElementById('previewContainer');
-        const preview = document.getElementById('preview');
-        const statusBadge = document.getElementById('statusBadge');
-        const resultBox = document.getElementById('resultBox');
-        const scoreBadge = document.getElementById('scoreBadge');
-        const alertList = document.getElementById('alertList');
-        const alternativeText = document.getElementById('alternativeText');
-
-        imageInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            // 1. Afficher l'aperçu
-            preview.src = URL.createObjectURL(file);
-            previewContainer.classList.remove('hidden');
-            resultBox.classList.add('hidden');
-            statusBadge.innerText = "Lecture du texte...";
-            statusBadge.className = "absolute top-2 right-2 bg-yellow-500 text-gray-900 text-xs px-2 py-1 rounded font-bold animate-pulse";
-
-            // 2. OCR Local avec Tesseract.js
-            try {
-                const result = await Tesseract.recognize(file, 'fra');
-                const texteExtrait = result.data.text.toLowerCase();
-                
-                statusBadge.innerText = "Analyse nutritionnelle...";
-                statusBadge.className = "absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded font-bold";
-                
-                // 3. Lancer l'analyse robuste
-                analyserTexteProduit(texteExtrait);
-            } catch (error) {
-                alert("Erreur de lecture de l'image : " + error.message);
-                statusBadge.innerText = "Erreur";
-                statusBadge.className = "absolute top-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded font-bold";
-            }
-        });
-
-        function analyserTexteProduit(texte) {
-            // Nettoyage complet : retrait des accents et de la ponctuation pour éviter de bloquer la détection
-            let texteNettoye = texte
-                .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Enlève les accents (ex: gélatine -> gelatine)
-                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g," ")     // Remplace la ponctuation par des espaces
-                .replace(/\s+/g, " ");                            // Nettoie les doubles espaces
-
-            let alertesTrouvees = [];
-            let conseilsTrouves = [];
-            let scoreSante = 10; // Note de départ
-
-            // Analyse avec le dictionnaire robuste
-            dictionnaireAlertes.forEach(item => {
-                if (texteNettoye.includes(item.mot)) {
-                    alertesTrouvees.push(`${item.nomAffichage} : ${item.risque}`);
-                    scoreSante -= 4.5; // Grosse pénalité (les produits très sucrés comme les Tagada vont chuter directement à 1/10)
-                }
-            });
-
-            // Borner le score entre 1 et 10
-            if (scoreSante < 1) scoreSante = 1;
-
-            // Sélectionner les conseils d'alternatives correspondants
-            suggestionsAlternatives.forEach(item => {
-                if (texteNettoye.includes(item.declencheur)) {
-                    conseilsTrouves.push(item.conseil);
-                }
-            });
-
-            // Afficher les alertes détectées
-            alertList.innerHTML = "";
-            if (alertesTrouvees.length > 0) {
-                alertesTrouvees.forEach(alerte => {
-                    const li = document.createElement('li');
-                    li.textContent = alerte;
-                    alertList.appendChild(li);
-                });
-            } else {
-                const li = document.createElement('li');
-                li.textContent = "Aucun additif ou ingrédient critique détecté dans cette zone de texte !";
-                li.className = "text-green-400 list-none font-medium";
-                alertList.appendChild(li);
-            }
-
-            // Afficher l'alternative conseillée
-            if (conseilsTrouves.length > 0) {
-                // On fusionne les conseils uniques trouvés
-                alternativeText.innerText = [...new Set(conseilsTrouves)].join(" ");
-            } else {
-                alternativeText.innerText = "Ce produit semble correct selon les ingrédients analysés. Si tu cherches le meilleur choix, privilégie toujours des aliments bruts non emballés.";
-            }
-
-            // Afficher le score avec la couleur appropriée
-            scoreBadge.innerText = `Note : ${scoreSante}/10`;
-            if (scoreSante >= 7.5) {
-                scoreBadge.className = "inline-block px-3 py-1 rounded-full text-xs font-black mb-4 bg-green-500 text-white";
-            } else if (scoreSante >= 5) {
-                scoreBadge.className = "inline-block px-3 py-1 rounded-full text-xs font-black mb-4 bg-yellow-500 text-gray-900";
-            } else {
-                scoreBadge.className = "inline-block px-3 py-1 rounded-full text-xs font-black mb-4 bg-red-600 text-white animate-bounce";
-            }
-
-            statusBadge.innerText = "Analyse terminée !";
-            statusBadge.className = "absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded font-bold";
-            resultBox.classList.remove('hidden');
+        // On récupère la partie contenant les noms d'équipes (souvent le segment après /match/)
+        let matchSegment = pathSegments.find(segment => segment.includes('-'));
+        if (matchSegment) {
+            // Remplace les tirets par des espaces pour la recherche Google
+            let equipes = matchSegment.replace(/-/g, ' ');
+            // On enlève l'ID à la fin si présent
+            equipes = equipes.replace(/[a-zA-Z0-9]{8}$/, '').trim();
+            return equipes;
         }
-    </script>
-</body>
-</html>
+    } catch (e) {
+        console.error("Erreur d'analyse d'URL :", e);
+    }
+    return null;
+}
+
+async function chercherPolemiques() {
+    const url = document.getElementById('urlInput').value.trim();
+    const resultsDiv = document.getElementById('results');
+    
+    if (!url) {
+        alert("S'il te plaît, colle un lien valide !");
+        return;
+    }
+
+    const matchText = extraireEquipesDepuisUrl(url);
+    if (!matchText) {
+        resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Impossible de lire le nom des équipes dans ce lien. Essaie d'entrer directement 'Equipe A vs Equipe B' à la place.</p>";
+        return;
+    }
+
+    resultsDiv.innerHTML = `<p class="loading">Extraction réussie : "<strong>${matchText}</strong>".<br>Recherche de scandales d'arbitrage, cartons contestés et décisions VAR sur le web...</p>`;
+
+    // On crée notre requête de recherche spécialisée d'arbitrage
+    const requeteRecherche = `"${matchText}" AND (arbitrage OR arbitre OR penalty OR carton OR "erreur d'arbitrage" OR "VAR")`;
+    const apiUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(requeteRecherche)}`;
+
+    try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        
+        resultsDiv.innerHTML = `<h2>🔗 Liens trouvés pour : ${matchText}</h2>`;
+
+        if (data.items && data.items.length > 0) {
+            data.items.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'link-card';
+                card.innerHTML = `
+                    <a href="${item.link}" target="_blank">${item.title}</a>
+                    <p>${item.snippet}</p>
+                `;
+                resultsDiv.appendChild(card);
+            });
+        } else {
+            resultsDiv.innerHTML += `
+                <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px;">
+                    <p>✅ Aucun article ou vidéo mentionnant une polémique d'arbitrage ou une erreur
