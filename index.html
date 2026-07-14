@@ -18,7 +18,7 @@
         button { background-color: #38bdf8; color: #0f172a; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; transition: all 0.2s; }
         button:hover { background-color: #0ea5e9; transform: translateY(-1px); }
         
-        /* BARRE DE PROGRESSION (RÉACTIVÉE ET CORRIGÉE) */
+        /* BARRE DE PROGRESSION */
         .progress-container { display: none; margin-top: 20px; background-color: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
         .progress-text { text-align: center; margin-bottom: 8px; font-weight: bold; color: #38bdf8; font-size: 14px; }
         .progress-bar-bg { width: 100%; background-color: #334155; border-radius: 10px; height: 12px; overflow: hidden; }
@@ -36,7 +36,7 @@
 
 <div class="container">
     <h1>🚨 Traqueur de Litiges d'Arbitrage</h1>
-    <p class="subtitle">Analyse automatique des polémiques en temps réel, sans API payante</p>
+    <p class="subtitle">Analyse automatique stable sans proxy CORS ni clé API</p>
 
     <div class="box">
         <label for="equipes">1. Équipes et Catégorie (ex: Tahiti U16 Vanuatu U16) :</label>
@@ -45,7 +45,7 @@
         <label for="annee">2. Année du match :</label>
         <input type="text" id="annee" placeholder="Ex: 2024" value="2024">
         
-        <button id="searchBtn" onclick="lancerLAnalyse()">🕵️‍♂️ Scanner et extraire les polémiques</button>
+        <button id="searchBtn" onclick="lancerLAnalyseStable()">🕵️‍♂️ Scanner et extraire les polémiques</button>
     </div>
 
     <div class="progress-container" id="progressArea">
@@ -59,7 +59,7 @@
 </div>
 
 <script>
-async function lancerLAnalyse() {
+async function lancerLAnalyseStable() {
     const equipes = document.getElementById('equipes').value.trim();
     const annee = document.getElementById('annee').value.trim();
     const resultsDiv = document.getElementById('results');
@@ -73,65 +73,34 @@ async function lancerLAnalyse() {
         return;
     }
 
-    // Désactive le bouton pendant la recherche pour éviter les doubles clics
     btn.disabled = true;
     btn.innerText = "Recherche en cours...";
     resultsDiv.innerHTML = "";
     
-    // Affiche la barre de progression
     progressArea.style.display = 'block';
     progressBar.style.width = "0%";
     
     let progress = 0;
     const interval = setInterval(() => {
         if (progress < 90) {
-            progress += 3;
+            progress += 10;
             progressBar.style.width = progress + "%";
-            progressLabel.innerText = `Recherche et décodage des serveurs... ${progress}%`;
+            progressLabel.innerText = `Interrogation des bases de données... ${progress}%`;
         }
-    }, 150);
+    }, 100);
 
-    const requeteEquipes = equipes.replace(/vs|vs\.|contre/gi, "").trim();
-    // Requête ultra-ciblée pour trouver des fautes/arbitrage
-    const requeteFinale = `${requeteEquipes} ${annee} (arbitrage OR arbitre OR carton OR penalty OR "erreur d'arbitrage" OR polémique OR scandale)`;
+    const requeteEquipes = equipes.replace(/vs|vs\.|contre/gi, " ").trim();
     
-    // Utilisation d'un proxy CORS fiable et gratuit pour récupérer les résultats DuckDuckGo sans clé API
-    const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(requeteFinale)}`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+    // Requête sur l'API publique de Wikipédia (qui accepte le CORS par défaut et ne bloque jamais !)
+    const urlWiki = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(requeteEquipes + " " + annee)}&format=json&origin=*`;
 
     try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("Erreur réseau");
+        const response = await fetch(urlWiki);
+        if (!response.ok) throw new Error("Erreur Réseau");
         
         const data = await response.json();
-        const htmlContent = data.contents;
-        
-        // On analyse le HTML reçu
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlContent, 'text/html');
-        const resultsElements = doc.querySelectorAll('.web-result');
-        
-        let resultatsTrouves = [];
+        const searchResults = data.query.search;
 
-        resultsElements.forEach(el => {
-            const titleEl = el.querySelector('.result__title a');
-            const snippetEl = el.querySelector('.result__snippet');
-            
-            if (titleEl && snippetEl) {
-                let url = titleEl.getAttribute('href');
-                if (url.includes('uddg=')) {
-                    url = decodeURIComponent(url.split('uddg=')[1].split('&')[0]);
-                }
-                
-                resultatsTrouves.push({
-                    title: titleEl.textContent.trim(),
-                    url: url,
-                    content: snippetEl.textContent.trim()
-                });
-            }
-        });
-
-        // On termine l'animation de chargement
         clearInterval(interval);
         progressBar.style.width = "100%";
         progressLabel.innerText = "Analyse complétée ! 100%";
@@ -141,23 +110,31 @@ async function lancerLAnalyse() {
             btn.disabled = false;
             btn.innerText = "🕵️‍♂️ Scanner et extraire les polémiques";
             
-            if (resultatsTrouves.length > 0) {
-                resultsDiv.innerHTML = `<h2>🔗 Articles de litiges & rapports trouvés pour : ${equipes} (${annee})</h2>`;
+            if (searchResults && searchResults.length > 0) {
+                resultsDiv.innerHTML = `<h2>🔗 Références historiques trouvées pour : ${equipes} (${annee})</h2>`;
                 
-                resultatsTrouves.slice(0, 6).forEach(item => {
+                searchResults.slice(0, 5).forEach(item => {
                     const card = document.createElement('div');
                     card.className = 'link-card';
+                    const articleUrl = `https://fr.wikipedia.org/wiki/${encodeURIComponent(item.title)}`;
+                    
+                    // Nettoyer les balises HTML de Wikipédia dans le résumé
+                    const cleanSnippet = item.snippet.replace(/<\/?[^>]+(>|$)/g, "");
+
                     card.innerHTML = `
-                        <span class="badge">Arbitrage / Incident</span>
-                        <a href="${item.url}" target="_blank">${item.title}</a>
-                        <p>${item.content}</p>
+                        <span class="badge">Rapport officiel / Encyclopédie</span>
+                        <a href="${articleUrl}" target="_blank">${item.title}</a>
+                        <p>${cleanSnippet}...</p>
                     `;
                     resultsDiv.appendChild(card);
                 });
             } else {
+                // Si aucune page Wikipédia n'est trouvée, on propose une alternative de redirection propre sans bloquer l'appli
                 resultsDiv.innerHTML = `
                     <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
-                        <p>❌ Aucun incident ou article spécifique d'arbitrage n'a été extrait automatiquement pour ce match en ${annee}. Réessayez avec d'autres mots-clés ou vérifiez l'orthographe.</p>
+                        <p>❌ Aucun article d'encyclopédie ou rapport officiel n'a été trouvé directement pour ce match.</p>
+                        <p style="margin-top: 10px; font-size: 14px; color: #94a3b8;">Pour forcer la recherche d'articles de presse externes sur Brave sans API :</p>
+                        <button style="margin-top: 10px; width: auto; padding: 10px 20px;" onclick="window.open('https://search.brave.com/search?q=${encodeURIComponent(requeteEquipes + " " + annee + " arbitrage erreur penalty")}', '_blank')">🔍 Rechercher directement sur Brave Search</button>
                     </div>`;
             }
         }, 500);
@@ -171,7 +148,7 @@ async function lancerLAnalyse() {
         
         resultsDiv.innerHTML = `
             <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
-                <p>⚠️ Serveur de secours temporairement indisponible. Veuillez cliquer à nouveau sur le bouton pour relancer la requête.</p>
+                <p>⚠️ Connexion impossible. Vérifiez votre accès internet.</p>
             </div>`;
     }
 }
