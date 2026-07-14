@@ -33,7 +33,7 @@
     <h1>🚨 Traqueur de Litiges d'Arbitrage</h1>
     <p class="subtitle">Colle un lien Flashscore pour trouver toutes les polémiques du match sur le web</p>
 
-    <input type="text" id="urlInput" placeholder="Colle le lien Flashscore ici... (ex: https://www.flashscore.fr/match/xxxx/)">
+    <input type="text" id="urlInput" placeholder="Colle le lien Flashscore ici... (ex: https://www.flashscore.fr/r/?t=1&id=jTzDOtLE)">
     <button onclick="chercherPolemiques()">Scanner le Web</button>
 
     <div class="progress-container" id="progressArea">
@@ -48,24 +48,59 @@
 
 <script>
 // --- CONFIGURATION GRATUITE DE TON MOTEUR DE RECHERCHE ---
-// Remplace ces valeurs par tes clés gratuites obtenues sur Google
+// Remplace ces valeurs par tes clés gratuites obtenues sur Google 
 const GOOGLE_API_KEY = "TA_CLE_API_GOOGLE_ICI"; 
 const GOOGLE_CX = "TON_ID_DE_MOTEUR_DE_RECHERCHE_ICI"; 
 
-// Fonction pour extraire le nom des équipes à partir d'une URL Flashscore standard
-function extraireEquipesDepuisUrl(url) {
+// Cette fonction analyse l'URL, extrait l'ID de match si présent et tente de trouver les équipes
+async function obtenirEquipes(url) {
     try {
         const urlObj = new URL(url);
-        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
         
-        let matchSegment = pathSegments.find(segment => segment.includes('-'));
+        // 1. GESTION DU FORMAT COURT : /r/?t=1&id=jTzDOtLE
+        const idMatch = urlObj.searchParams.get('id');
+        if (idMatch) {
+            // On utilise un service proxy gratuit pour interroger l'API publique de Flashscore afin de récupérer les détails du match
+            // Ce proxy permet d'éviter les blocages de sécurité (CORS) directement depuis ton navigateur 
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://local-services.flashscore.com/xml/fr/x/feed/d_dt_' + idMatch + '_fr_1')}`;
+            const response = await fetch(proxyUrl);
+            const data = await response.json();
+            
+            if (data.contents) {
+                // Flashscore renvoie des données brutes séparant les infos par des caractères "¬"
+                // On extrait les lignes correspondantes aux noms des équipes (marquées par AE÷ pour équipe domicile et AF÷ pour équipe extérieur)
+                const segments = data.contents.split('¬');
+                let domicile = "";
+                let exterieur = "";
+                
+                segments.forEach(seg => {
+                    if (seg.startsWith('AE÷')) domicile = seg.replace('AE÷', '');
+                    if (seg.startsWith('AF÷')) exterieur = seg.replace('AF÷', '');
+                });
+
+                if (domicile && exterieur) {
+                    return `${domicile} ${exterieur}`;
+                }
+            }
+        }
+
+        // 2. GESTION DU FORMAT DE LIEN LONG TRADITIONNEL (ex: /match/tahiti-vanuatu-2026/...) 
+        let cleanUrl = url.split('#')[0].split('?')[0];
+        if (cleanUrl.endsWith('/')) {
+            cleanUrl = cleanUrl.slice(0, -1);
+        }
+        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+        let matchSegment = pathSegments.find(segment => segment.includes('-') && segment !== 'match');
+        
         if (matchSegment) {
-            let equipes = matchSegment.replace(/-/g, ' ');
-            equipes = equipes.replace(/[a-zA-Z0-9]{8}$/, '').trim();
-            return equipes;
+            let equipes = matchSegment.replace(/-[a-zA-Z0-9]{8}$/, ''); // Enlève l'ID collé à la fin 
+            equipes = equipes.replace(/-/g, ' ').trim(); // Remplace les tirets par des espaces 
+            if (equipes.split(' ').length >= 2) {
+                return equipes;
+            }
         }
     } catch (e) {
-        console.error("Erreur d'analyse d'URL :", e);
+        console.error("Erreur lors de l'extraction des équipes :", e);
     }
     return null;
 }
@@ -82,21 +117,15 @@ async function chercherPolemiques() {
         return;
     }
 
-    const matchText = extraireEquipesDepuisUrl(url);
-    if (!matchText) {
-        resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Impossible de lire le nom des équipes dans ce lien. Essaie d'entrer directement 'Equipe A vs Equipe B' à la place.</p>";
-        return;
-    }
-
-    // Réinitialiser l'affichage et lancer l'animation de chargement
+    // Réinitialiser l'affichage et afficher la barre de chargement 
     resultsDiv.innerHTML = "";
     progressArea.style.display = 'block';
     
     let score = 0;
     progressBar.style.width = "0%";
-    progressLabel.innerText = "Lecture du lien Flashscore... 0/100";
+    progressLabel.innerText = "Lecture et décodage du lien Flashscore... 0/100";
 
-    // Fonction pour animer la barre de progression
+    // Fonction d'animation de la barre
     const avancerBarre = (cible, message, callback) => {
         let interval = setInterval(() => {
             if (score < cible) {
@@ -107,25 +136,40 @@ async function chercherPolemiques() {
                 clearInterval(interval);
                 if (callback) callback();
             }
-        }, 15); // Vitesse de l'animation
+        }, 12);
     };
 
-    // Étape 1 : Analyse de l'URL (0 à 30%)
-    avancerBarre(30, "Extraction des équipes", () => {
-        // Étape 2 : Préparation des requêtes Google (30 à 65%)
-        avancerBarre(65, "Création des requêtes d'arbitrage", async () => {
+    // Étape 1 : Analyse de l'URL et requête API Flashscore (0% à 35%)
+    avancerBarre(35, "Identification du match via Flashscore", async () => {
+        let matchText = await obtenirEquipes(url);
+
+        // Si l'extraction automatique de l'ID ou de l'URL échoue, on bascule sur la saisie manuelle 
+        if (!matchText) {
+            progressArea.style.display = 'none';
+            const fallbackPrompt = prompt("Impossible de lire automatiquement le nom des équipes à partir de cette URL.\n\nS'il te plaît, saisis manuellement le nom du match (ex: Tahiti Vanuatu) :");
+            if (fallbackPrompt && fallbackPrompt.trim() !== "") {
+                matchText = fallbackPrompt.trim();
+                // On relance la barre à l'étape 2 si l'utilisateur a saisi manuellement
+                progressArea.style.display = 'block';
+                score = 35;
+            } else {
+                resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Recherche annulée. Entre un nom de match ou un lien valide.</p>";
+                return;
+            }
+        }
+
+        // Étape 2 : Préparation de la recherche Google (35% à 70%)
+        avancerBarre(70, `Match trouvé : "${matchText}". Préparation de la recherche`, async () => {
             
-            // On prépare l'appel API en arrière-plan pendant que la barre continue de progresser
-            const requeteRecherche = `"${matchText}" AND (arbitrage OR arbitre OR penalty OR carton OR "erreur d'arbitrage" OR "VAR")`;
+            const requeteRecherche = `"${matchText}" AND (arbitrage OR arbitre OR penalty OR carton OR "erreur d'arbitrage" OR "VAR")`; 
             const apiUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(requeteRecherche)}`;
-            
+
             try {
                 const response = await fetch(apiUrl);
                 const data = await response.json();
 
-                // Étape 3 : Réception et rendu des résultats (65 à 100%)
-                avancerBarre(100, "Analyse des données trouvées", () => {
-                    // Cacher la barre après une courte pause à 100%
+                // Étape 3 : Réception des données (70% à 100%)
+                avancerBarre(100, "Traitement des articles et des liens trouvés", () => {
                     setTimeout(() => {
                         progressArea.style.display = 'none';
                         afficherResultats(data, matchText);
@@ -135,7 +179,7 @@ async function chercherPolemiques() {
             } catch (error) {
                 console.error(error);
                 progressArea.style.display = 'none';
-                resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Une erreur est survenue lors de l'appel à l'API Google. Vérifie tes clés.</p>";
+                resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Une erreur est survenue lors de l'appel à l'API de recherche. Vérifie tes clés Google.</p>";
             }
         });
     });
@@ -143,7 +187,7 @@ async function chercherPolemiques() {
 
 function afficherResultats(data, matchText) {
     const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = `<h2>🔗 Liens trouvés pour : ${matchText}</h2>`;
+    resultsDiv.innerHTML = `<h2>🔗 Liens d'arbitrage trouvés pour : ${matchText}</h2>`;
 
     if (data.items && data.items.length > 0) {
         data.items.forEach(item => {
@@ -158,7 +202,7 @@ function afficherResultats(data, matchText) {
     } else {
         resultsDiv.innerHTML += `
             <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px;">
-                <p>✅ Aucun article ou vidéo mentionnant une polémique d'arbitrage ou une erreur VAR n'a été trouvé pour ce match.</p>
+                <p>✅ Aucun article ou vidéo mentionnant une polémique d'arbitrage ou une erreur VAR n'a été trouvé pour ce match.</p> 
             </div>`;
     }
 }
