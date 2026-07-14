@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mon Scanner Santé Indépendant</title>
+    <!-- Tailwind pour le style -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tesseract.js pour lire le texte sur la photo sans serveur -->
+    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 flex flex-col items-center font-sans">
+
+    <h1 class="text-2xl font-bold mb-2 text-center text-green-400">Scanner Santé Local</h1>
+    <p class="text-xs text-gray-400 mb-6 text-center">Analyse 100% locale sans API externe</p>
+
+    <div class="w-full max-w-md bg-gray-800 p-6 rounded-2xl shadow-xl text-center border border-gray-750">
+        <!-- Input invisible pour déclencher l'appareil photo -->
+        <input type="file" id="imageInput" accept="image/*" capture="environment" class="hidden">
+        
+        <button onclick="document.getElementById('imageInput').click()" class="bg-green-600 hover:bg-green-500 active:scale-95 transition w-full py-4 rounded-xl font-bold text-lg mb-4 shadow-lg shadow-green-900/30">
+            📷 Photographier les Ingrédients
+        </button>
+
+        <!-- Preview de l'image -->
+        <div class="relative hidden mb-4" id="previewContainer">
+            <img id="preview" class="w-full rounded-lg max-h-64 object-cover border border-gray-700" />
+            <div id="statusBadge" class="absolute top-2 right-2 bg-yellow-500 text-gray-900 text-xs px-2 py-1 rounded font-bold">Lecture...</div>
+        </div>
+
+        <!-- Zone de Résultats -->
+        <div id="resultBox" class="hidden text-left bg-gray-950 p-4 rounded-xl border border-gray-800">
+            <h3 class="font-bold text-lg mb-2 text-gray-200">Analyse de la recette :</h3>
+            <div id="scoreBadge" class="inline-block px-3 py-1 rounded-full text-xs font-black mb-4"></div>
+            
+            <div class="space-y-3">
+                <div>
+                    <h4 class="text-xs font-bold text-red-400 uppercase tracking-wider">⚠️ Additifs / Alertes décelés :</h4>
+                    <ul id="alertList" class="list-disc list-inside text-sm text-gray-300 mt-1"></ul>
+                </div>
+                <hr class="border-gray-800">
+                <div>
+                    <h4 class="text-xs font-bold text-green-400 uppercase tracking-wider">💡 Alternatives conseillées :</h4>
+                    <p id="alternativeText" class="text-sm text-gray-300 mt-1"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- BASE DE CONNAISSANCES LOCALE (Directement dans ton code) ---
+        // Liste d'additifs et d'ingrédients à surveiller
+        const dictionnaireAlertes = [
+            { mot: "sirop de glucose", risque: "Sucre ultra-rapide à fort index glycémique." },
+            { mot: "huile de palme", risque: "Riche en acides gras saturés, mauvaise pour le système cardiovasculaire." },
+            { mot: "e621", risque: "Glutamate de sodium (exhausteur de goût controversé)." },
+            { mot: "aspartame", risque: "Édulcorant artificiel suspecté d'altérer le microbiote." },
+            { mot: "e250", risque: "Nitrite de sodium (conservateur cancérogène dans les charcuteries)." },
+            { mot: "e171", risque: "Dioxyde de titane (additif interdit suspecté d'être génotoxique)." },
+            { mot: "dextrose", risque: "Sucre caché à absorption très rapide." },
+            { mot: "sucre", risque: "Ingrédient hautement calorique. À consommer avec grande modération." },
+            { mot: "graisse hydrogénée", risque: "Contient des acides gras trans nocifs pour le cœur." }
+        ];
+
+        // Dictionnaire d'alternatives automatiques selon les ingrédients trouvés
+        const suggestionsAlternatives = [
+            { declencheur: "sucre", conseil: "Préfère un produit contenant des sucres naturels (fruits, miel) ou une version 'sans sucres ajoutés'." },
+            { declencheur: "huile de palme", conseil: "Cherche une recette utilisant de l'huile de colza, de tournesol ou du beurre de cacao." },
+            { declencheur: "e250", conseil: "Choisis une charcuterie portant la mention 'sans nitrite ajouté'." },
+            { declencheur: "sirop de glucose", conseil: "Tourne-toi vers des produits à base de céréales complètes moins raffinées." }
+        ];
+
+        const imageInput = document.getElementById('imageInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const preview = document.getElementById('preview');
+        const statusBadge = document.getElementById('statusBadge');
+        const resultBox = document.getElementById('resultBox');
+        const scoreBadge = document.getElementById('scoreBadge');
+        const alertList = document.getElementById('alertList');
+        const alternativeText = document.getElementById('alternativeText');
+
+        imageInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // 1. Afficher l'aperçu de l'image
+            preview.src = URL.createObjectURL(file);
+            previewContainer.classList.remove('hidden');
+            resultBox.classList.add('hidden');
+            statusBadge.innerText = "Lecture du texte...";
+            statusBadge.className = "absolute top-2 right-2 bg-yellow-500 text-gray-900 text-xs px-2 py-1 rounded font-bold animate-pulse";
+
+            // 2. Extraire le texte de l'image (OCR en local)
+            try {
+                const result = await Tesseract.recognize(file, 'fra');
+                const texteExtrait = result.data.text.toLowerCase();
+                
+                statusBadge.innerText = "Analyse nutritionnelle...";
+                statusBadge.className = "absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded font-bold";
+                
+                // 3. Lancer l'algorithme d'analyse locale
+                analyserTexteProduit(texteExtrait);
+            } catch (error) {
+                alert("Erreur lors de la lecture de l'image : " + error.message);
+                statusBadge.innerText = "Erreur";
+            }
+        });
+
+        function analyserTexteProduit(texte) {
+            let alertesTrouvees = [];
+            let conseilsTrouves = [];
+            let scoreSante = 10; // On commence avec la note maximale de 10
+
+            // Parcours du dictionnaire d'alertes
+            dictionnaireAlertes.forEach(item => {
+                if (texte.includes(item.mot)) {
+                    alertesTrouvees.push(`${item.mot.toUpperCase()} : ${item.risque}`);
+                    scoreSante -= 2.5; // On baisse la note pour chaque ingrédient suspect détecté
+                }
+            });
+
+            // S'assurer que le score ne tombe pas en dessous de 1
+            if (scoreSante < 1) scoreSante = 1;
+
+            // Génération des conseils alternatifs locaux
+            suggestionsAlternatives.forEach(item => {
+                if (texte.includes(item.declencheur)) {
+                    conseilsTrouves.push(item.conseil);
+                }
+            });
+
+            // 4. Affichage des résultats
+            alertList.innerHTML = "";
+            if (alertesTrouvees.length > 0) {
+                alertesTrouvees.forEach(alerte => {
+                    const li = document.createElement('li');
+                    li.textContent = alerte;
+                    alertList.appendChild(li);
+                });
+            } else {
+                const li = document.createElement('li');
+                li.textContent = "Aucun additif ou ingrédient critique détecté dans cette zone de texte !";
+                li.className = "text-green-400 list-none";
+                alertList.appendChild(li);
+            }
+
+            // Affichage de l'alternative
+            if (conseilsTrouves.length > 0) {
+                alternativeText.innerText = conseilsTrouves[0]; // Propose le premier conseil pertinent
+            } else {
+                alternativeText.innerText = "Ce produit semble correct. Si tu cherches mieux, privilégie des aliments bruts et non emballés.";
+            }
+
+            // Gestion de l'affichage du score
+            scoreBadge.innerText = `Note : ${scoreSante}/10`;
+            if (scoreSante >= 7.5) {
+                scoreBadge.className = "inline-block px-3 py-1 rounded-full text-xs font-black mb-4 bg-green-500 text-white";
+            } else if (scoreSante >= 5) {
+                scoreBadge.className = "inline-block px-3 py-1 rounded-full text-xs font-black mb-4 bg-yellow-500 text-gray-900";
+            } else {
+                scoreBadge.className = "inline-block px-3 py-1 rounded-full text-xs font-black mb-4 bg-red-600 text-white";
+            }
+
+            statusBadge.innerText = "Analyse terminée !";
+            statusBadge.className = "absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded font-bold";
+            resultBox.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
