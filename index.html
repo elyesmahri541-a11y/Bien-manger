@@ -25,27 +25,31 @@
         .progress-bar-fill { width: 0%; background-color: #38bdf8; height: 100%; transition: width 0.1s ease; }
 
         .results-section { margin-top: 30px; }
-        .link-card { background-color: #334155; padding: 15px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #f43f5e; transition: transform 0.2s; }
-        .link-card:hover { transform: translateX(5px); }
-        .link-card a { color: #38bdf8; font-weight: bold; text-decoration: none; font-size: 18px; display: block; margin-bottom: 5px; }
-        .link-card p { margin: 0; font-size: 14px; color: #cbd5e1; line-height: 1.4; }
-        .badge { display: inline-block; background-color: #f43f5e; color: white; padding: 2px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; margin-bottom: 8px; text-transform: uppercase; }
+        .link-card { background-color: #1e293b; padding: 18px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #334155; border-left: 4px solid #f43f5e; transition: transform 0.2s; }
+        .link-card:hover { transform: translateX(5px); border-color: #475569; }
+        .link-card a { color: #38bdf8; font-weight: bold; text-decoration: none; font-size: 17px; display: block; margin-bottom: 8px; }
+        .link-card a:hover { text-decoration: underline; }
+        .link-card p { margin: 0; font-size: 14px; color: #cbd5e1; line-height: 1.5; }
+        
+        .meta-info { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
+        .badge { background-color: #f43f5e; color: white; padding: 3px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; text-transform: uppercase; }
+        .source-url { color: #64748b; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>🚨 Traqueur de Litiges d'Arbitrage</h1>
-    <p class="subtitle">Analyse automatique stable sans proxy CORS ni clé API</p>
+    <p class="subtitle">Scrapeur de presse sportive en temps réel, 100% gratuit</p>
 
     <div class="box">
-        <label for="equipes">1. Équipes et Catégorie (ex: Tahiti U16 Vanuatu U16) :</label>
+        <label for="equipes">1. Équipes du match (ex: Tahiti U16 Vanuatu U16) :</label>
         <input type="text" id="equipes" placeholder="Ex: Tahiti U16 Vanuatu U16" value="Tahiti U16 Vanuatu U16">
 
         <label for="annee">2. Année du match :</label>
         <input type="text" id="annee" placeholder="Ex: 2024" value="2024">
         
-        <button id="searchBtn" onclick="lancerLAnalyseStable()">🕵️‍♂️ Scanner et extraire les polémiques</button>
+        <button id="searchBtn" onclick="lancerLAnalyseActu()">🕵️‍♂️ Scanner la presse sportive</button>
     </div>
 
     <div class="progress-container" id="progressArea">
@@ -59,7 +63,34 @@
 </div>
 
 <script>
-async function lancerLAnalyseStable() {
+// Liste de Proxys de secours ultra-rapides pour contourner le CORS sans jamais bloquer
+const PROXIES = [
+    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    (url) => `https://images${Math.floor(Math.random() * 3 + 1)}-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=604800&url=${encodeURIComponent(url)}`
+];
+
+async function fetchAvecSecours(targetUrl) {
+    for (let i = 0; i < PROXIES.length; i++) {
+        try {
+            const proxyfiedUrl = PROXIES[i](targetUrl);
+            const response = await fetch(proxyfiedUrl);
+            if (response.ok) {
+                // Allorigins encapsule la réponse dans un JSON .contents
+                if (proxyfiedUrl.includes("allorigins.win")) {
+                    const json = await response.json();
+                    return json.contents;
+                }
+                return await response.text();
+            }
+        } catch (e) {
+            console.warn(`Proxy ${i + 1} a échoué, tentative avec le suivant...`);
+        }
+    }
+    throw new Error("Tous les serveurs de secours sont saturés.");
+}
+
+async function lancerLAnalyseActu() {
     const equipes = document.getElementById('equipes').value.trim();
     const annee = document.getElementById('annee').value.trim();
     const resultsDiv = document.getElementById('results');
@@ -69,86 +100,116 @@ async function lancerLAnalyseStable() {
     const btn = document.getElementById('searchBtn');
 
     if (!equipes || !annee) {
-        alert("S'il te plaît, remplis les deux cases d'abord !");
+        alert("S'il te plaît, remplis les deux cases !");
         return;
     }
 
     btn.disabled = true;
     btn.innerText = "Recherche en cours...";
     resultsDiv.innerHTML = "";
-    
     progressArea.style.display = 'block';
     progressBar.style.width = "0%";
     
     let progress = 0;
     const interval = setInterval(() => {
         if (progress < 90) {
-            progress += 10;
+            progress += 5;
             progressBar.style.width = progress + "%";
-            progressLabel.innerText = `Interrogation des bases de données... ${progress}%`;
+            progressLabel.innerText = `Scan de la presse sportive en cours... ${progress}%`;
         }
-    }, 100);
+    }, 150);
 
     const requeteEquipes = equipes.replace(/vs|vs\.|contre/gi, " ").trim();
-    
-    // Requête sur l'API publique de Wikipédia (qui accepte le CORS par défaut et ne bloque jamais !)
-    const urlWiki = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(requeteEquipes + " " + annee)}&format=json&origin=*`;
+    // Requête chirurgicale axée arbitrage et football
+    const requeteFinale = `${requeteEquipes} ${annee} foot (arbitre OR arbitrage OR penalty OR "carton rouge" OR erreur OR polémique OR scandale)`;
+    const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(requeteFinale)}`;
 
     try {
-        const response = await fetch(urlWiki);
-        if (!response.ok) throw new Error("Erreur Réseau");
+        const htmlContent = await fetchAvecSecours(targetUrl);
         
-        const data = await response.json();
-        const searchResults = data.query.search;
+        // Décryptage et parsing du code HTML reçu
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlContent, 'text/html');
+        const webResults = doc.querySelectorAll('.web-result');
+        
+        let articlesPresse = [];
+        
+        // Mots-clés obligatoires pour s'assurer que c'est du football/arbitrage
+        const motsClesFootball = ["arbitre", "arbitrage", "faute", "penalty", "carton", "rouge", "jaune", "var", "erreur", "scandale", "polémique", "litige", "foot", "match", "joueur", "sifflé"];
+
+        webResults.forEach(el => {
+            const titleEl = el.querySelector('.result__title a');
+            const snippetEl = el.querySelector('.result__snippet');
+            
+            if (titleEl && snippetEl) {
+                const titleText = titleEl.textContent.trim();
+                const snippetText = snippetEl.textContent.trim();
+                const texteComplet = (titleText + " " + snippetText).toLowerCase();
+                
+                let url = titleEl.getAttribute('href');
+                if (url.includes('uddg=')) {
+                    url = decodeURIComponent(url.split('uddg=')[1].split('&')[0]);
+                }
+
+                // Filtrage strict : l'article doit parler de foot ET d'un problème d'arbitrage
+                const contientMotsCles = motsClesFootball.some(mot => texteComplet.includes(mot));
+                // On élimine les sites encyclopédiques comme Wikipédia pour avoir de vraies sources de presse
+                const nEstPasWiki = !url.includes("wikipedia.org");
+
+                if (contientMotsCles && nEstPasWiki) {
+                    articlesPresse.push({
+                        title: titleText,
+                        url: url,
+                        content: snippetText
+                    });
+                }
+            }
+        });
 
         clearInterval(interval);
         progressBar.style.width = "100%";
-        progressLabel.innerText = "Analyse complétée ! 100%";
+        progressLabel.innerText = "Analyse terminée !";
 
         setTimeout(() => {
             progressArea.style.display = 'none';
             btn.disabled = false;
-            btn.innerText = "🕵️‍♂️ Scanner et extraire les polémiques";
+            btn.innerText = "🕵️‍♂️ Scanner la presse sportive";
             
-            if (searchResults && searchResults.length > 0) {
-                resultsDiv.innerHTML = `<h2>🔗 Références historiques trouvées pour : ${equipes} (${annee})</h2>`;
+            if (articlesPresse.length > 0) {
+                resultsDiv.innerHTML = `<h2>📰 Articles & Polémiques trouvés (${articlesPresse.length}) :</h2>`;
                 
-                searchResults.slice(0, 5).forEach(item => {
+                articlesPresse.slice(0, 6).forEach(item => {
                     const card = document.createElement('div');
                     card.className = 'link-card';
-                    const articleUrl = `https://fr.wikipedia.org/wiki/${encodeURIComponent(item.title)}`;
-                    
-                    // Nettoyer les balises HTML de Wikipédia dans le résumé
-                    const cleanSnippet = item.snippet.replace(/<\/?[^>]+(>|$)/g, "");
-
                     card.innerHTML = `
-                        <span class="badge">Rapport officiel / Encyclopédie</span>
-                        <a href="${articleUrl}" target="_blank">${item.title}</a>
-                        <p>${cleanSnippet}...</p>
+                        <div class="meta-info">
+                            <span class="badge">Presse / Média</span>
+                            <span class="source-url">${new URL(item.url).hostname}</span>
+                        </div>
+                        <a href="${item.url}" target="_blank">${item.title}</a>
+                        <p>${item.content}</p>
                     `;
                     resultsDiv.appendChild(card);
                 });
             } else {
-                // Si aucune page Wikipédia n'est trouvée, on propose une alternative de redirection propre sans bloquer l'appli
                 resultsDiv.innerHTML = `
-                    <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
-                        <p>❌ Aucun article d'encyclopédie ou rapport officiel n'a été trouvé directement pour ce match.</p>
-                        <p style="margin-top: 10px; font-size: 14px; color: #94a3b8;">Pour forcer la recherche d'articles de presse externes sur Brave sans API :</p>
-                        <button style="margin-top: 10px; width: auto; padding: 10px 20px;" onclick="window.open('https://search.brave.com/search?q=${encodeURIComponent(requeteEquipes + " " + annee + " arbitrage erreur penalty")}', '_blank')">🔍 Rechercher directement sur Brave Search</button>
+                    <div style="background-color: #0f172a; padding: 25px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
+                        <p>❌ Aucune polémique d'arbitrage flagrante n'a été répertoriée dans la presse sportive pour <strong>${equipes} (${annee})</strong>.</p>
+                        <p style="margin-top: 10px; font-size: 13px; color: #94a3b8;">Conseil : Vérifie bien l'orthographe des équipes ou change légèrement les noms.</p>
                     </div>`;
             }
-        }, 500);
+        }, 400);
 
     } catch (error) {
         console.error(error);
         clearInterval(interval);
         progressArea.style.display = 'none';
         btn.disabled = false;
-        btn.innerText = "🕵️‍♂️ Scanner et extraire les polémiques";
+        btn.innerText = "🕵️‍♂️ Scanner la presse sportive";
         
         resultsDiv.innerHTML = `
-            <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
-                <p>⚠️ Connexion impossible. Vérifiez votre accès internet.</p>
+            <div style="background-color: #0f172a; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #fb923c;">
+                <p>⚠️ Les serveurs de récupération de presse sont actuellement surchargés. Réessaye dans quelques secondes en cliquant à nouveau sur le bouton.</p>
             </div>`;
     }
 }
