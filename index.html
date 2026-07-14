@@ -31,10 +31,10 @@
 
 <div class="container">
     <h1>🚨 Traqueur de Litiges d'Arbitrage</h1>
-    <p class="subtitle">Colle ton lien de match Flashscore pour trouver toutes les polémiques sur le web</p>
+    <p class="subtitle">Saisis les équipes et l'année pour trouver toutes les polémiques d'arbitrage</p>
 
-    <input type="text" id="urlInput" placeholder="Colle le lien Flashscore ou tape directement les équipes...">
-    <button onclick="chercherPolemiques()">Scanner le Web</button>
+    <input type="text" id="urlInput" placeholder="Exemple de match : Tahiti U16 vs Vanuatu U16..." readonly onclick="chercherPolemiques()">
+    <button onclick="chercherPolemiques()">Lancer la recherche</button>
 
     <div class="progress-container" id="progressArea">
         <div class="progress-text" id="progressLabel">Initialisation... 0/100</div>
@@ -51,86 +51,44 @@
 const GOOGLE_API_KEY = "TA_CLE_API_GOOGLE_ICI"; 
 const GOOGLE_CX = "TON_ID_DE_MOTEUR_DE_RECHERCHE_ICI"; 
 
-// Cette fonction tente d'extraire le nom des équipes si l'URL est longue
-function extraireEquipesDepuisUrl(url) {
-    try {
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            return url; // Si l'utilisateur tape directement du texte
-        }
-
-        const urlObj = new URL(url);
-        
-        // Si c'est un format de lien de partage court, on retourne null
-        const idMatch = urlObj.searchParams.get('id');
-        if (idMatch && urlObj.pathname.includes('/r/')) {
-            return null;
-        }
-
-        // Si c'est un format de lien long classique
-        let cleanUrl = url.split('#')[0].split('?')[0];
-        if (cleanUrl.endsWith('/')) {
-            cleanUrl = cleanUrl.slice(0, -1);
-        }
-        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
-        let matchSegment = pathSegments.find(segment => segment.includes('-') && segment !== 'match');
-        
-        if (matchSegment) {
-            let equipes = matchSegment.replace(/-[a-zA-Z0-9]{8}$/, ''); // Enlève l'ID de fin
-            equipes = equipes.replace(/-/g, ' ').trim(); // Remplace les tirets par des espaces
-            if (equipes.split(' ').length >= 2) {
-                return equipes;
-            }
-        }
-    } catch (e) {
-        console.error("Erreur de lecture de l'URL :", e);
-    }
-    return null;
-}
-
 async function chercherPolemiques() {
-    const url = document.getElementById('urlInput').value.trim();
     const resultsDiv = document.getElementById('results');
     const progressArea = document.getElementById('progressArea');
     const progressBar = document.getElementById('progressBar');
     const progressLabel = document.getElementById('progressLabel');
     
-    if (!url) {
-        alert("S'il te plaît, colle un lien ou tape le nom d'un match !");
+    resultsDiv.innerHTML = "";
+
+    // 1. Demande de l'équipe et de la catégorie d'âge (ex: Tahiti U16 vs Vanuatu U16)
+    const equipesMatch = prompt(
+        "Étape 1 sur 2 :\n\nEntrez les équipes et la catégorie d'âge (ex: Tahiti U16 vs Vanuatu U16, ou Tahiti vs Vanuatu) :",
+        "Tahiti U16 vs Vanuatu U16"
+    );
+    
+    if (!equipesMatch || equipesMatch.trim() === "") {
+        resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Recherche annulée. Vous devez entrer les équipes.</p>";
         return;
     }
 
-    resultsDiv.innerHTML = "";
-    let matchText = extraireEquipesDepuisUrl(url);
+    // 2. Demande de l'année précise (ex: 2024, 2018, etc.)
+    const anneeMatch = prompt(
+        `Étape 2 sur 2 :\n\nQuelle est l'année de ce match (ex: 2024, 2018) ?`,
+        new Date().getFullYear()
+    );
 
-    // Si c'est un lien court, on demande d'abord les équipes, puis l'année précise du match
-    if (!matchText) {
-        const nomMatchSaisi = prompt(
-            "Ce lien est un format court Flashscore.\n\nSaisis le nom des deux équipes (ex: Tahiti U16 Vanuatu U16) :",
-            "Tahiti U16 Vanuatu U16"
-        );
-        
-        if (nomMatchSaisi && nomMatchSaisi.trim() !== "") {
-            const anneeSaisie = prompt(
-                `Pour quel match précis ? Saisis l'année (ex: 2024, 2018, 2026) :`,
-                new Date().getFullYear()
-            );
-            
-            if (anneeSaisie && anneeSaisie.trim() !== "") {
-                matchText = `${nomMatchSaisi.trim()} ${anneeSaisie.trim()}`;
-            } else {
-                matchText = nomMatchSaisi.trim(); // Au pire, on cherche sans l'année
-            }
-        } else {
-            resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Recherche annulée. Veuillez préciser le match concerné.</p>";
-            return;
-        }
+    if (!anneeMatch || anneeMatch.trim() === "") {
+        resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Recherche annulée. Vous devez spécifier une année.</p>";
+        return;
     }
+
+    // Combinaison propre des éléments pour la recherche
+    const matchRechercheText = `${equipesMatch.trim()} ${anneeMatch.trim()}`;
 
     // Afficher et lancer la barre de chargement
     progressArea.style.display = 'block';
     let score = 0;
     progressBar.style.width = "0%";
-    progressLabel.innerText = "Initialisation... 0/100";
+    progressLabel.innerText = "Initialisation de la recherche... 0/100";
 
     const avancerBarre = (cible, message, callback) => {
         let interval = setInterval(() => {
@@ -145,40 +103,40 @@ async function chercherPolemiques() {
         }, 10);
     };
 
-    // Étape 1 : Analyse de l'URL (0% à 30%)
-    avancerBarre(30, "Lecture des détails du match", () => {
+    // Étape 1 : Validation des informations (0% à 30%)
+    avancerBarre(30, "Configuration des filtres de recherche", () => {
         
-        // Étape 2 : Requête Google ciblée (30% à 70%)
-        avancerBarre(70, `Recherche d'arbitrage pour : "${matchText}"`, async () => {
+        // Étape 2 : Lancement de la recherche Google (30% à 70%)
+        avancerBarre(70, `Recherche d'arbitrage pour : "${matchRechercheText}"`, async () => {
             
-            // Requête ciblée qui force l'année ou l'édition demandée pour éviter les mélanges
-            const requeteRecherche = `"${matchText}" AND (arbitrage OR arbitre OR penalty OR carton OR "erreur d'arbitrage" OR "VAR")`;
+            // Requête ciblant spécifiquement la catégorie d'âge + l'année saisie + les mots-clés d'arbitrage
+            const requeteRecherche = `"${equipesMatch.trim()}" "${anneeMatch.trim()}" AND (arbitrage OR arbitre OR penalty OR carton OR "erreur d'arbitrage" OR "VAR")`;
             const apiUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(requeteRecherche)}`;
 
             try {
                 const response = await fetch(apiUrl);
                 const data = await response.json();
 
-                // Étape 3 : Affichage (70% à 100%)
+                // Étape 3 : Affichage des résultats (70% à 100%)
                 avancerBarre(100, "Traitement des résultats de recherche", () => {
                     setTimeout(() => {
                         progressArea.style.display = 'none';
-                        afficherResultats(data, matchText);
+                        afficherResultats(data, matchRechercheText);
                     }, 400);
                 });
 
             } catch (error) {
                 console.error(error);
                 progressArea.style.display = 'none';
-                resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Erreur de connexion avec l'API Google Search. Vérifie tes identifiants.</p>";
+                resultsDiv.innerHTML = "<p style='color:#f43f5e;'>Erreur de connexion avec l'API Google Search. Vérifie tes identifiants Google.</p>";
             }
         });
     });
 }
 
-function afficherResultats(data, matchText) {
+function afficherResultats(data, matchRechercheText) {
     const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = `<h2>🔗 Liens d'arbitrage trouvés pour : ${matchText}</h2>`;
+    resultsDiv.innerHTML = `<h2>🔗 Liens d'arbitrage trouvés pour : ${matchRechercheText}</h2>`;
 
     if (data.items && data.items.length > 0) {
         data.items.forEach(item => {
