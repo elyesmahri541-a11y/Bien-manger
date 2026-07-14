@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Détecteur de Polémiques d'Arbitrage</title>
+    <title>🚨 Détecteur Automatique de Litiges d'Arbitrage</title>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background-color: #0f172a; color: #f8fafc; }
         .container { background-color: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
@@ -18,7 +18,6 @@
         button { background-color: #38bdf8; color: #0f172a; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; transition: all 0.2s; }
         button:hover { background-color: #0ea5e9; transform: translateY(-1px); }
         
-        /* Barre de progression animée */
         .progress-container { display: none; margin-top: 20px; background-color: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
         .progress-text { text-align: center; margin-bottom: 8px; font-weight: bold; color: #38bdf8; font-size: 14px; }
         .progress-bar-bg { width: 100%; background-color: #334155; border-radius: 10px; height: 12px; overflow: hidden; }
@@ -36,7 +35,7 @@
 
 <div class="container">
     <h1>🚨 Traqueur de Litiges d'Arbitrage</h1>
-    <p class="subtitle">Analyse automatique des fautes et erreurs sans aucune API payante</p>
+    <p class="subtitle">Extraction et analyse automatique en arrière-plan sans clé API</p>
 
     <div class="box">
         <label for="equipes">1. Équipes et Catégorie (ex: Pays-Bas Argentine, Tahiti U16 Vanuatu U16) :</label>
@@ -45,11 +44,11 @@
         <label for="annee">2. Année du match :</label>
         <input type="text" id="annee" placeholder="Ex: 2022" value="2022">
         
-        <button onclick="analyserMatch()">🕵️‍♂️ Scanner et Analyser le match</button>
+        <button onclick="analyserMatchEnArrierePlan()">🕵️‍♂️ Scanner et extraire les polémiques</button>
     </div>
 
     <div class="progress-container" id="progressArea">
-        <div class="progress-text" id="progressLabel">Connexion au réseau... 0/100</div>
+        <div class="progress-text" id="progressLabel">Extraction en cours... 0/100</div>
         <div class="progress-bar-bg">
             <div class="progress-bar-fill" id="progressBar"></div>
         </div>
@@ -59,15 +58,7 @@
 </div>
 
 <script>
-// Liste d'instances publiques de SearxNG pour s'assurer qu'au moins une réponde instantanément
-const INSTANCES = [
-    "https://searx.be/search",
-    "https://searx.space/search",
-    "https://search.ononoki.org/search",
-    "https://baresearch.org/search"
-];
-
-async function analyserMatch() {
+async function analyserMatchEnArrierePlan() {
     const equipes = document.getElementById('equipes').value.trim();
     const annee = document.getElementById('annee').value.trim();
     const resultsDiv = document.getElementById('results');
@@ -84,78 +75,83 @@ async function analyserMatch() {
     progressArea.style.display = 'block';
     progressBar.style.width = "0%";
     
-    // Animation de la barre de progression
     let progress = 0;
     const interval = setInterval(() => {
         if (progress < 90) {
-            progress += 2;
+            progress += 5;
             progressBar.style.width = progress + "%";
-            progressLabel.innerText = `Recherche d'incidents d'arbitrage en cours... ${progress}/100`;
+            progressLabel.innerText = `Recherche et décodage HTML... ${progress}/100`;
         }
-    }, 150);
+    }, 100);
 
-    // Formule magique ultra-ciblée d'arbitrage
     const requeteEquipes = equipes.replace(/vs|vs\.|contre/gi, "").trim();
-    const requeteFinale = `${requeteEquipes} ${annee} (arbitre OR arbitrage OR penalty OR "carton rouge" OR "erreur" OR polémique OR scandale)`;
-
-    let data = null;
+    // Formulation ultra-précise pour DuckDuckGo HTML
+    const requeteFinale = `${requeteEquipes} ${annee} arbitrage faute penalty scandale`;
     
-    // Essai successif des serveurs gratuits jusqu'à ce qu'un réponde
-    for (let instance of INSTANCES) {
-        try {
-            const url = `${instance}?q=${encodeURIComponent(requeteFinale)}&format=json&engines=google,bing,duckduckgo&language=fr`;
-            const response = await fetch(url);
-            if (response.ok) {
-                data = await response.json();
-                break; // Succès ! On arrête la boucle
-            }
-        } catch (e) {
-            console.log(`Serveur ${instance} indisponible, essai du suivant...`);
-        }
-    }
-
-    clearInterval(interval);
-    progressBar.style.width = "100%";
-    progressLabel.innerText = "Analyse terminée ! 100/100";
+    // On utilise l'URL DuckDuckGo HTML (plus facile à scraper que Google)
+    const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(requeteFinale)}`;
     
-    setTimeout(() => {
-        progressArea.style.display = 'none';
+    // On passe par un proxy CORS public gratuit pour contourner les blocages du navigateur
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+    try {
+        const response = await fetch(proxyUrl);
+        const data = await response.json();
         
-        if (data && data.results && data.results.length > 0) {
-            resultsDiv.innerHTML = `<h2>🔗 Polémiques & Litiges trouvés pour : ${equipes} (${annee})</h2>`;
-            
-            // On filtre pour afficher en priorité les articles contenant des mots d'arbitrage
-            const motsClesLitiges = ["arbitre", "arbitrage", "penalty", "rouge", "jaune", "scandale", "faute", "erreur", "polémique", "conteste", "fifa", "var"];
-            
-            let resultatsFiltres = data.results.filter(item => {
-                const texte = (item.title + " " + item.content).toLowerCase();
-                return motsClesLitiges.some(mot => texte.includes(mot));
-            });
+        // On récupère le contenu de la page web
+        const htmlContent = data.contents;
+        
+        // On crée un document virtuel pour analyser le HTML reçu
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlContent, 'text/html');
+        
+        // Recherche des éléments de résultats dans DuckDuckGo HTML
+        const resultsElements = doc.querySelectorAll('.web-result');
+        let resultatsTrouves = [];
 
-            // Si le filtre est trop strict, on reprend l'ensemble des résultats
-            if (resultatsFiltres.length === 0) {
-                resultatsFiltres = data.results.slice(0, 5);
+        resultsElements.forEach(el => {
+            const titleEl = el.querySelector('.result__title a');
+            const snippetEl = el.querySelector('.result__snippet');
+            
+            if (titleEl && snippetEl) {
+                let url = titleEl.getAttribute('href');
+                // Nettoyage de la redirection d'URL DuckDuckGo
+                if (url.includes('uddg=')) {
+                    url = decodeURIComponent(url.split('uddg=')[1].split('&')[0]);
+                }
+                
+                resultatsTrouves.push({
+                    title: titleEl.textContent.trim(),
+                    url: url,
+                    content: snippetEl.textContent.trim()
+                });
             }
+        });
 
-            resultatsFiltres.slice(0, 6).forEach(item => {
-                const card = document.createElement('div');
-                card.className = 'link-card';
-                card.innerHTML = `
-                    <span class="badge">Incident / Arbitrage</span>
-                    <a href="${item.url}" target="_blank">${item.title}</a>
-                    <p>${item.content || "Cliquez sur le lien pour lire l'article complet concernant les décisions de ce match."}</p>
-                `;
-                resultsDiv.appendChild(card);
-            });
-        } else {
-            resultsDiv.innerHTML = `
-                <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
-                    <p>❌ Aucun incident ou polémique d'arbitrage notable n'a été répertorié en ligne pour ce match précis en ${annee}.</p>
-                </div>`;
-        }
-    }, 500);
-}
-</script>
+        clearInterval(interval);
+        progressBar.style.width = "100%";
+        progressLabel.innerText = "Analyse complétée ! 100/100";
 
-</body>
-</html>
+        setTimeout(() => {
+            progressArea.style.display = 'none';
+            
+            if (resultatsTrouves.length > 0) {
+                resultsDiv.innerHTML = `<h2>🔗 Résultats d'arbitrage trouvés pour : ${equipes} (${annee})</h2>`;
+                
+                resultatsTrouves.slice(0, 6).forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'link-card';
+                    card.innerHTML = `
+                        <span class="badge">Article Trouvé</span>
+                        <a href="${item.url}" target="_blank">${item.title}</a>
+                        <p>${item.content}</p>
+                    `;
+                    resultsDiv.appendChild(card);
+                });
+            } else {
+                resultsDiv.innerHTML = `
+                    <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
+                        <p>❌ Aucun résultat n'a pu être extrait. Relancez l'analyse ou vérifiez votre connexion réseau.</p>
+                    </div>`;
+            }
+        }, 50
