@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚨 Détecteur Automatique de Litiges d'Arbitrage</title>
+    <title>🚨 Détecteur de Litiges d'Arbitrage</title>
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background-color: #0f172a; color: #f8fafc; }
         .container { background-color: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
@@ -18,6 +18,7 @@
         button { background-color: #38bdf8; color: #0f172a; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; transition: all 0.2s; }
         button:hover { background-color: #0ea5e9; transform: translateY(-1px); }
         
+        /* BARRE DE PROGRESSION (RÉACTIVÉE ET CORRIGÉE) */
         .progress-container { display: none; margin-top: 20px; background-color: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
         .progress-text { text-align: center; margin-bottom: 8px; font-weight: bold; color: #38bdf8; font-size: 14px; }
         .progress-bar-bg { width: 100%; background-color: #334155; border-radius: 10px; height: 12px; overflow: hidden; }
@@ -35,20 +36,20 @@
 
 <div class="container">
     <h1>🚨 Traqueur de Litiges d'Arbitrage</h1>
-    <p class="subtitle">Extraction et analyse automatique en arrière-plan sans clé API</p>
+    <p class="subtitle">Analyse automatique des polémiques en temps réel, sans API payante</p>
 
     <div class="box">
-        <label for="equipes">1. Équipes et Catégorie (ex: Pays-Bas Argentine, Tahiti U16 Vanuatu U16) :</label>
-        <input type="text" id="equipes" placeholder="Ex: Pays-Bas Argentine" value="Pays-Bas Argentine">
+        <label for="equipes">1. Équipes et Catégorie (ex: Tahiti U16 Vanuatu U16) :</label>
+        <input type="text" id="equipes" placeholder="Ex: Tahiti U16 Vanuatu U16" value="Tahiti U16 Vanuatu U16">
 
         <label for="annee">2. Année du match :</label>
-        <input type="text" id="annee" placeholder="Ex: 2022" value="2022">
+        <input type="text" id="annee" placeholder="Ex: 2024" value="2024">
         
-        <button onclick="analyserMatchEnArrierePlan()">🕵️‍♂️ Scanner et extraire les polémiques</button>
+        <button id="searchBtn" onclick="lancerLAnalyse()">🕵️‍♂️ Scanner et extraire les polémiques</button>
     </div>
 
     <div class="progress-container" id="progressArea">
-        <div class="progress-text" id="progressLabel">Extraction en cours... 0/100</div>
+        <div class="progress-text" id="progressLabel">Démarrage de la recherche... 0%</div>
         <div class="progress-bar-bg">
             <div class="progress-bar-fill" id="progressBar"></div>
         </div>
@@ -58,55 +59,58 @@
 </div>
 
 <script>
-async function analyserMatchEnArrierePlan() {
+async function lancerLAnalyse() {
     const equipes = document.getElementById('equipes').value.trim();
     const annee = document.getElementById('annee').value.trim();
     const resultsDiv = document.getElementById('results');
     const progressArea = document.getElementById('progressArea');
     const progressBar = document.getElementById('progressBar');
     const progressLabel = document.getElementById('progressLabel');
+    const btn = document.getElementById('searchBtn');
 
     if (!equipes || !annee) {
-        alert("Remplis les deux cases d'abord !");
+        alert("S'il te plaît, remplis les deux cases d'abord !");
         return;
     }
 
+    // Désactive le bouton pendant la recherche pour éviter les doubles clics
+    btn.disabled = true;
+    btn.innerText = "Recherche en cours...";
     resultsDiv.innerHTML = "";
+    
+    // Affiche la barre de progression
     progressArea.style.display = 'block';
     progressBar.style.width = "0%";
     
     let progress = 0;
     const interval = setInterval(() => {
         if (progress < 90) {
-            progress += 5;
+            progress += 3;
             progressBar.style.width = progress + "%";
-            progressLabel.innerText = `Recherche et décodage HTML... ${progress}/100`;
+            progressLabel.innerText = `Recherche et décodage des serveurs... ${progress}%`;
         }
-    }, 100);
+    }, 150);
 
     const requeteEquipes = equipes.replace(/vs|vs\.|contre/gi, "").trim();
-    // Formulation ultra-précise pour DuckDuckGo HTML
-    const requeteFinale = `${requeteEquipes} ${annee} arbitrage faute penalty scandale`;
+    // Requête ultra-ciblée pour trouver des fautes/arbitrage
+    const requeteFinale = `${requeteEquipes} ${annee} (arbitrage OR arbitre OR carton OR penalty OR "erreur d'arbitrage" OR polémique OR scandale)`;
     
-    // On utilise l'URL DuckDuckGo HTML (plus facile à scraper que Google)
+    // Utilisation d'un proxy CORS fiable et gratuit pour récupérer les résultats DuckDuckGo sans clé API
     const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(requeteFinale)}`;
-    
-    // On passe par un proxy CORS public gratuit pour contourner les blocages du navigateur
     const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
     try {
         const response = await fetch(proxyUrl);
-        const data = await response.json();
+        if (!response.ok) throw new Error("Erreur réseau");
         
-        // On récupère le contenu de la page web
+        const data = await response.json();
         const htmlContent = data.contents;
         
-        // On crée un document virtuel pour analyser le HTML reçu
+        // On analyse le HTML reçu
         const parser = new DOMParser();
         const doc = parser.parseFromString(htmlContent, 'text/html');
-        
-        // Recherche des éléments de résultats dans DuckDuckGo HTML
         const resultsElements = doc.querySelectorAll('.web-result');
+        
         let resultatsTrouves = [];
 
         resultsElements.forEach(el => {
@@ -115,7 +119,6 @@ async function analyserMatchEnArrierePlan() {
             
             if (titleEl && snippetEl) {
                 let url = titleEl.getAttribute('href');
-                // Nettoyage de la redirection d'URL DuckDuckGo
                 if (url.includes('uddg=')) {
                     url = decodeURIComponent(url.split('uddg=')[1].split('&')[0]);
                 }
@@ -128,21 +131,24 @@ async function analyserMatchEnArrierePlan() {
             }
         });
 
+        // On termine l'animation de chargement
         clearInterval(interval);
         progressBar.style.width = "100%";
-        progressLabel.innerText = "Analyse complétée ! 100/100";
+        progressLabel.innerText = "Analyse complétée ! 100%";
 
         setTimeout(() => {
             progressArea.style.display = 'none';
+            btn.disabled = false;
+            btn.innerText = "🕵️‍♂️ Scanner et extraire les polémiques";
             
             if (resultatsTrouves.length > 0) {
-                resultsDiv.innerHTML = `<h2>🔗 Résultats d'arbitrage trouvés pour : ${equipes} (${annee})</h2>`;
+                resultsDiv.innerHTML = `<h2>🔗 Articles de litiges & rapports trouvés pour : ${equipes} (${annee})</h2>`;
                 
                 resultatsTrouves.slice(0, 6).forEach(item => {
                     const card = document.createElement('div');
                     card.className = 'link-card';
                     card.innerHTML = `
-                        <span class="badge">Article Trouvé</span>
+                        <span class="badge">Arbitrage / Incident</span>
                         <a href="${item.url}" target="_blank">${item.title}</a>
                         <p>${item.content}</p>
                     `;
@@ -151,7 +157,25 @@ async function analyserMatchEnArrierePlan() {
             } else {
                 resultsDiv.innerHTML = `
                     <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
-                        <p>❌ Aucun résultat n'a pu être extrait. Relancez l'analyse ou vérifiez votre connexion réseau.</p>
+                        <p>❌ Aucun incident ou article spécifique d'arbitrage n'a été extrait automatiquement pour ce match en ${annee}. Réessayez avec d'autres mots-clés ou vérifiez l'orthographe.</p>
                     </div>`;
             }
-        }, 50
+        }, 500);
+
+    } catch (error) {
+        console.error(error);
+        clearInterval(interval);
+        progressArea.style.display = 'none';
+        btn.disabled = false;
+        btn.innerText = "🕵️‍♂️ Scanner et extraire les polémiques";
+        
+        resultsDiv.innerHTML = `
+            <div style="background-color: #1e293b; padding: 20px; text-align: center; border-radius: 8px; border: 1px dashed #f43f5e;">
+                <p>⚠️ Serveur de secours temporairement indisponible. Veuillez cliquer à nouveau sur le bouton pour relancer la requête.</p>
+            </div>`;
+    }
+}
+</script>
+
+</body>
+</html>
