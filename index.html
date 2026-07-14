@@ -59,10 +59,10 @@ async function chercherPolemiques() {
     
     resultsDiv.innerHTML = "";
 
-    // 1. Demande de l'équipe et de la catégorie d'âge (ex: Tahiti U16 vs Vanuatu U16)
+    // 1. Demande de l'équipe et de la catégorie d'âge
     const equipesMatch = prompt(
-        "Étape 1 sur 2 :\n\nEntrez les équipes et la catégorie d'âge (ex: Tahiti U16 vs Vanuatu U16, ou Tahiti vs Vanuatu) :",
-        "Tahiti U16 vs Vanuatu U16"
+        "Étape 1 sur 2 :\n\nEntrez les pays/équipes (ex: Pays-Bas Argentine, ou Tahiti U16 Vanuatu U16) :",
+        "Pays-Bas Argentine"
     );
     
     if (!equipesMatch || equipesMatch.trim() === "") {
@@ -70,10 +70,10 @@ async function chercherPolemiques() {
         return;
     }
 
-    // 2. Demande de l'année précise (ex: 2024, 2018, etc.)
+    // 2. Demande de l'année précise (ex: 2022, 2024, etc.)
     const anneeMatch = prompt(
-        `Étape 2 sur 2 :\n\nQuelle est l'année de ce match (ex: 2024, 2018) ?`,
-        new Date().getFullYear()
+        `Étape 2 sur 2 :\n\nQuelle est l'année de ce match (ex: 2022, 2024) ?`,
+        "2022"
     );
 
     if (!anneeMatch || anneeMatch.trim() === "") {
@@ -81,8 +81,8 @@ async function chercherPolemiques() {
         return;
     }
 
-    // Combinaison propre des éléments pour la recherche
-    const matchRechercheText = `${equipesMatch.trim()} ${anneeMatch.trim()}`;
+    // Nettoyage de la saisie utilisateur (on enlève les "vs" ou "contre" pour ne pas bloquer Google)
+    let requeteEquipes = equipesMatch.replace(/vs|vs\.|contre/gi, "").trim();
 
     // Afficher et lancer la barre de chargement
     progressArea.style.display = 'block';
@@ -107,10 +107,11 @@ async function chercherPolemiques() {
     avancerBarre(30, "Configuration des filtres de recherche", () => {
         
         // Étape 2 : Lancement de la recherche Google (30% à 70%)
-        avancerBarre(70, `Recherche d'arbitrage pour : "${matchRechercheText}"`, async () => {
+        avancerBarre(70, `Recherche d'arbitrage pour : "${requeteEquipes} ${anneeMatch}"`, async () => {
             
-            // Requête ciblant spécifiquement la catégorie d'âge + l'année saisie + les mots-clés d'arbitrage
-            const requeteRecherche = `"${equipesMatch.trim()}" "${anneeMatch.trim()}" AND (arbitrage OR arbitre OR penalty OR carton OR "erreur d'arbitrage" OR "VAR")`;
+            // Version corrigée : On n'utilise PLUS de guillemets stricts autour du nom des équipes !
+            // Cela permet à Google de chercher "Pays-Bas" ET "Argentine" ET "2022" de manière flexible.
+            const requeteRecherche = `${requeteEquipes} ${anneeMatch} (arbitrage OR arbitre OR penalty OR carton OR "erreur d'arbitrage" OR "VAR" OR polémique OR scandale)`;
             const apiUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(requeteRecherche)}`;
 
             try {
@@ -121,7 +122,7 @@ async function chercherPolemiques() {
                 avancerBarre(100, "Traitement des résultats de recherche", () => {
                     setTimeout(() => {
                         progressArea.style.display = 'none';
-                        afficherResultats(data, matchRechercheText);
+                        afficherResultats(data, `${equipesMatch} (${anneeMatch})`);
                     }, 400);
                 });
 
